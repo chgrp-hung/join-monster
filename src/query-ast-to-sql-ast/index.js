@@ -84,13 +84,13 @@ export function populateASTNode(queryASTNode, parentTypeNode, sqlASTNode, namesp
   }
 
   // if list then mark flag true & get the type inside the GraphQLList container type
-  if (gqlType.constructor.name === 'GraphQLList') {
+  if (hasSomeParentProto(gqlType, ['GraphQLList'])) {
     gqlType = stripNonNullType(gqlType.ofType)
     grabMany = true
   }
 
   // if its a relay connection, there are several things we need to do
-  if (gqlType.constructor.name === 'GraphQLObjectType' && gqlType._fields.edges && gqlType._fields.pageInfo) {
+  if (hasSomeParentProto(gqlType, ['GraphQLObjectType']) && gqlType._fields.edges && gqlType._fields.pageInfo) {
     grabMany = true
     // grab the types and fields inside the connection
     const stripped = stripRelayConnection(field, queryASTNode, this.fragments)
