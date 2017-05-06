@@ -13,7 +13,7 @@ function hasSomeParentProto(obj, names = []) {
   }
   const proto = Object.getPrototypeOf(obj)
   if (proto) {
-    return hasSomeParentProto(proto)
+    return hasSomeParentProto(proto, names)
   }
   return false
 }
