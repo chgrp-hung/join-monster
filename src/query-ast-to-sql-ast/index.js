@@ -3,14 +3,20 @@ import { flatMap } from 'lodash'
 import AliasNamespace from '../alias-namespace'
 import { wrap } from '../util'
 
-import {
-  GraphQLList,
-  GraphQLObjectType,
-  GraphQLInterfaceType,
-  GraphQLUnionType,
-  GraphQLNonNull,
-} from 'graphql'
-
+function hasSomeParentProto(obj, names = []) {
+  if (
+    obj.constructor &&
+    obj.constructor.name &&
+    names.includes(obj.constructor.name)
+  ) {
+    return true
+  }
+  const proto = Object.getPrototypeOf(obj)
+  if (proto) {
+    return hasSomeParentProto(proto)
+  }
+  return false
+}
 
 export function queryASTToSqlAST(resolveInfo, options, context) {
   // this is responsible for all the logic regarding creating SQL aliases
@@ -78,13 +84,13 @@ export function populateASTNode(queryASTNode, parentTypeNode, sqlASTNode, namesp
   }
 
   // if list then mark flag true & get the type inside the GraphQLList container type
-  if (gqlType instanceof GraphQLList) {
+  if (gqlType.constructor.name === 'GraphQLList') {
     gqlType = stripNonNullType(gqlType.ofType)
     grabMany = true
   }
 
   // if its a relay connection, there are several things we need to do
-  if (gqlType instanceof GraphQLObjectType && gqlType._fields.edges && gqlType._fields.pageInfo) {
+  if (gqlType.constructor.name === 'GraphQLObjectType' && gqlType._fields.edges && gqlType._fields.pageInfo) {
     grabMany = true
     // grab the types and fields inside the connection
     const stripped = stripRelayConnection(field, queryASTNode, this.fragments)
@@ -108,7 +114,7 @@ export function populateASTNode(queryASTNode, parentTypeNode, sqlASTNode, namesp
   // is this a table in SQL?
   if (
     !field.jmIgnoreTable &&
-    (gqlType instanceof GraphQLObjectType || gqlType instanceof GraphQLInterfaceType || gqlType instanceof GraphQLUnionType)
+    hasSomeParentProto(gqlType, [ 'GraphQLObjectType', 'GraphQLUnionType', 'GraphQLInterfaceType' ])
     && config.sqlTable
   ) {
     if (depth >= 1) {
@@ -221,9 +227,10 @@ function handleTable(sqlASTNode, queryASTNode, field, gqlType, namespace, grabMa
   children.push(keyToASTChild(config.uniqueKey, namespace))
 
   // this is for helping resolve types in union types
-  if (config.typeHint &&
-      (gqlType instanceof GraphQLUnionType || gqlType instanceof GraphQLInterfaceType)
-    ) {
+  if (
+    config.typeHint &&
+    hasSomeParentProto(gqlType, [ 'GraphQLUnionType', 'GraphQLInterfaceType' ])
+  ) {
     children.push({
       type: 'column',
       name: config.typeHint,
@@ -238,7 +245,10 @@ function handleTable(sqlASTNode, queryASTNode, field, gqlType, namespace, grabMa
   }
 
   if (queryASTNode.selectionSet) {
-    if (gqlType instanceof GraphQLUnionType || gqlType instanceof GraphQLInterfaceType) {
+    if (
+      hasSomeParentProto(gqlType, [ 'GraphQLUnionType' ]) ||
+      hasSomeParentProto(gqlType, [ 'GraphQLInterfaceType' ])
+    ) {
       // union types have special rules for the child fields in join monster
       handleUnionSelections.call(this, children, queryASTNode.selectionSet.selections, gqlType, namespace, depth, options, context)
     } else {
@@ -271,7 +281,7 @@ function handleUnionSelections(children, selections, gqlType, namespace, depth, 
         // but the gqlType is the Union. The data isn't there, its on each of the types that make up the union
         // lets find that type and handle the selections based on THAT type instead
         const deferToType = this.schema._typeMap[selectionNameOfType]
-        const handler = deferToType instanceof GraphQLObjectType ? handleSelections : handleUnionSelections
+        const handler = hasSomeParentProto(deferToType, [ 'GraphQLObjectType' ]) ? handleSelections : handleUnionSelections
         handler.call(this, children, selection.selectionSet.selections, deferToType, namespace, depth, options, context)
       }
       break
@@ -282,7 +292,7 @@ function handleUnionSelections(children, selections, gqlType, namespace, depth, 
         const fragment = this.fragments[fragmentName]
         const fragmentNameOfType = fragment.typeCondition.name.value
         const deferToType = this.schema._typeMap[fragmentNameOfType ]
-        const handler = deferToType instanceof GraphQLObjectType ? handleSelections : handleUnionSelections
+        const handler = hasSomeParentProto(deferToType, [ 'GraphQLObjectType' ]) ? handleSelections : handleUnionSelections
         handler.call(this, children, fragment.selectionSet.selections, deferToType, namespace, depth, options, context)
       }
       break
@@ -435,7 +445,7 @@ function stripRelayConnection(field, queryASTNode, fragments) {
 }
 
 function stripNonNullType(type) {
-  return (type instanceof GraphQLNonNull) ? type.ofType : type
+  return hasSomeParentProto(type, [ 'GraphQLNonNull' ]) ? type.ofType : type
 }
 
 // go through and make sure se only ask for each sqlDep once per table
