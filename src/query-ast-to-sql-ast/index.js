@@ -8,7 +8,6 @@ import {
   GraphQLObjectType,
   GraphQLInterfaceType,
   GraphQLUnionType,
-  GraphQLEnumType,
   GraphQLNonNull,
 } from 'graphql'
 
